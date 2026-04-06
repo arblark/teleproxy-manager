@@ -1,20 +1,9 @@
 # Teleproxy Manager
 
-Скрипт автоматической установки и управления [Teleproxy](https://github.com/teleproxy/teleproxy) — MTProto прокси для Telegram с защитой от DPI.
-
-## Установка
+Установка и управление [Teleproxy](https://github.com/teleproxy/teleproxy) — MTProto прокси для Telegram.
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/main/teleproxy-manager.sh)
 ```
 
-## Возможности
-
-- Установка через Docker или бинарник + systemd
-- Fake-TLS маскировка, до 16 секретов, IP-фильтрация
-- PROXY Protocol, SOCKS5, DC Override, Prometheus метрики
-- Обновление, бэкапы, полное удаление
-
-## Лицензия
-
-MIT
+Docker или бинарник, Fake-TLS, до 16 секретов, IP-фильтры, PROXY Protocol, SOCKS5, Prometheus метрики, бэкапы, обновление, удаление — всё через консольное меню.

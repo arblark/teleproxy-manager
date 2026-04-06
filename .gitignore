@@ -1,8 +1,3 @@
 *.log
 .DS_Store
 Thumbs.db
-Dockerfile
-docker-compose.yml
-install.sh
-start.sh
-teleproxy-config-refresh.sh
