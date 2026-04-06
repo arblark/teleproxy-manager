@@ -3,6 +3,11 @@
 # bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/main/teleproxy-manager.sh)
 set -eo pipefail
 
+# Гарантируем что stdin — терминал (нужно при curl|bash и bash <(...))
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+    exec </dev/tty
+fi
+
 GITHUB_REPO="teleproxy/teleproxy"
 SCRIPT_REPO="arblark/teleproxy-manager"
 INSTALL_DIR="/usr/local/bin"
@@ -118,22 +123,31 @@ reload_cfg() {
 # ── Самоустановка скрипта ──────────────────────────────────────────────
 self_install() {
     local src="${BASH_SOURCE[0]}"
-    if [ -z "$src" ] || [ "$src" = "bash" ] || [ "$src" = "/dev/stdin" ]; then
-        local tmp; tmp=$(mktemp)
-        curl -fsSL "https://raw.githubusercontent.com/${SCRIPT_REPO}/main/teleproxy-manager.sh" -o "$tmp" 2>/dev/null
-        chmod +x "$tmp"
-        mv "$tmp" "$SELF_PATH"
-    elif [ "$(realpath "$src" 2>/dev/null)" != "$(realpath "$SELF_PATH" 2>/dev/null)" ]; then
+    local need_download=0
+    if [ -z "$src" ] || [ "$src" = "bash" ] || [ "$src" = "/dev/stdin" ] || [[ "$src" == /dev/fd/* ]] || [[ "$src" == /proc/self/fd/* ]]; then
+        need_download=1
+    elif [ "$(realpath "$src" 2>/dev/null)" != "$(realpath "$SELF_PATH" 2>/dev/null)" ] && [ -f "$src" ] && [ -s "$src" ]; then
         cp "$src" "$SELF_PATH"
         chmod +x "$SELF_PATH"
+    else
+        need_download=1
     fi
-    [ -x "$SELF_PATH" ] && ok "Скрипт установлен: $SELF_PATH (teleproxy-manager)"
+    if [ "$need_download" = "1" ] && { [ ! -x "$SELF_PATH" ] || [ ! -s "$SELF_PATH" ]; }; then
+        local tmp; tmp=$(mktemp)
+        curl -fsSL "https://raw.githubusercontent.com/${SCRIPT_REPO}/main/teleproxy-manager.sh" -o "$tmp" 2>/dev/null
+        if [ -s "$tmp" ]; then
+            chmod +x "$tmp"; mv "$tmp" "$SELF_PATH"
+        else
+            rm -f "$tmp"
+        fi
+    fi
+    [ -x "$SELF_PATH" ] && [ -s "$SELF_PATH" ] && ok "CLI: teleproxy-manager" || true
 }
 
 # ── Проверка обновлений скрипта ────────────────────────────────────────
 check_script_update() {
     local remote_ver
-    remote_ver=$(curl -fsSL --max-time 3 "https://raw.githubusercontent.com/${SCRIPT_REPO}/main/teleproxy-manager.sh" 2>/dev/null | grep -m1 '^VER=' | cut -d'"' -f2)
+    remote_ver=$(curl -fsSL --max-time 3 "https://raw.githubusercontent.com/${SCRIPT_REPO}/main/teleproxy-manager.sh" 2>/dev/null | grep -m1 '^VER=' | cut -d'"' -f2 || true)
     if [ -n "$remote_ver" ] && [ "$remote_ver" != "$VER" ]; then
         printf "  ${Y}⬆${NC}  Доступна новая версия скрипта: ${W}v${remote_ver}${NC} ${D}(текущая: v${VER})${NC}\n"
         printf "      Обновить: ${C}teleproxy-manager update-self${NC}\n"
@@ -146,12 +160,14 @@ get_proxy_version() {
     if [ "$m" = "binary" ] && [ -x "$INSTALL_DIR/teleproxy" ]; then
         out=$("$INSTALL_DIR/teleproxy" --version 2>&1 || true)
     elif [ "$m" = "docker" ]; then
-        out=$(docker exec "$DOCKER_NAME" /opt/teleproxy/teleproxy --version 2>&1 || true)
+        out=$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$DOCKER_NAME" 2>/dev/null || true)
+        [ "$out" = "<no value>" ] && out=""
+        if [ -z "$out" ]; then
+            out=$(docker inspect --format '{{ .Config.Image }}' "$DOCKER_NAME" 2>/dev/null || true)
+        fi
     fi
     [ -z "$out" ] && return
-    ver=$(echo "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1) || true
-    if [ -n "$ver" ]; then echo "$ver"; return; fi
-    ver=$(echo "$out" | grep -oE '[0-9]+' | head -1) || true
+    ver=$(echo "$out" | { grep -oE '[0-9]{1,3}\.[0-9]{1,3}(\.[0-9]{1,3})?' || true; } | head -1)
     [ -n "$ver" ] && echo "$ver"
 }
 
@@ -208,7 +224,7 @@ get_brief_stats() {
 
 # ── Баннер + меню ──────────────────────────────────────────────────────
 show_menu() {
-    clear
+    clear 2>/dev/null || true
     local st m ip st_txt m_txt pv up
     st=$(detect_status); m=$(detect_method); ip=$(get_ip)
     pv=$(get_proxy_version)
@@ -281,7 +297,6 @@ show_menu() {
     printf "\n"
     menu_i 0 "Выход" ""
     line
-    check_script_update 2>/dev/null
     printf "\n  ${BOLD}> ${NC}"
 }
 
@@ -570,7 +585,7 @@ do_links() {
     local m; m=$(detect_method)
     if [ "$m" = "docker" ]; then
         printf "\n  ${D}Из логов контейнера:${NC}\n"
-        docker logs "$DOCKER_NAME" 2>&1 | grep -E "(tg://|t\.me/proxy)" | sed 's/^/    /' | tail -16
+        docker logs "$DOCKER_NAME" 2>&1 | { grep -E "(tg://|t\.me/proxy)" || true; } | sed 's/^/    /' | tail -16
         echo ""
     fi
     printf "\n  ${BOLD}Из конфигурации:${NC}\n"
@@ -1080,9 +1095,11 @@ cli_dispatch() {
 # ── Главный цикл ──────────────────────────────────────────────────────
 main_interactive() {
     check_root; check_os; install_deps
-    self_install 2>/dev/null
+    self_install 2>/dev/null || true
+    check_script_update 2>/dev/null || true
     while true; do
-        show_menu; read -r ch
+        show_menu
+        read -r ch || break
         local st; st=$(detect_status)
         if [ "$st" = "none" ]; then
             case "$ch" in 1) install_docker;; 2) install_binary;; 0) echo ""; exit 0;; *) warn "Неверный выбор"; pause;; esac
