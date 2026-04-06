@@ -5,7 +5,7 @@
 ## Установка
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-install/main/teleproxy-manager.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/main/teleproxy-manager.sh)
 ```
 
 ## Возможности

@@ -3,7 +3,7 @@
 #  Teleproxy Manager — установка, настройка и управление MTProto-прокси
 #  Версия: 1.0
 #  Однострочная установка:
-#    bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-install/main/teleproxy-manager.sh)
+#    bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/main/teleproxy-manager.sh)
 # ═══════════════════════════════════════════════════════════════════════
 set -eo pipefail
 
