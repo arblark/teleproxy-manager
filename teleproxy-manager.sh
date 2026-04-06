@@ -32,13 +32,7 @@ die()     { err "$1"; exit 1; }
 hdr()     { printf "\n${B}──${NC} ${BOLD}%s${NC}\n" "$1"; }
 line()    { printf "${D}  ──────────────────────────────────────────────${NC}\n"; }
 pause()   { printf "\n${D}  Enter — продолжить...${NC}"; read -r; }
-menu_i()  {
-    if [ -n "$3" ]; then
-        printf "  ${G}%2s${NC}) %-32b ${D}%s${NC}\n" "$1" "$2" "$3"
-    else
-        printf "  ${G}%2s${NC}) %b\n" "$1" "$2"
-    fi
-}
+menu_i()  { printf "  \033[0;32m%2s\033[0m) %-30s \033[0;90m%s\033[0m\n" "$1" "$2" "$3"; }
 
 # ── Утилиты ────────────────────────────────────────────────────────────
 detect_method() {
@@ -108,10 +102,8 @@ secret_blocks() {
 }
 
 count_secrets() {
-    [ -f "$CONFIG_FILE" ] || { echo 0; return; }
-    local n
-    n=$(grep -c '^\[\[secret\]\]' "$CONFIG_FILE" 2>/dev/null) || true
-    echo "${n:-0}"
+    [ -f "$CONFIG_FILE" ] || { echo "0"; return; }
+    grep -c '^\[\[secret\]\]' "$CONFIG_FILE" 2>/dev/null | tr -dc '0-9' || echo "0"
 }
 
 reload_cfg() {
@@ -150,14 +142,17 @@ check_script_update() {
 
 # ── Версия и uptime ────────────────────────────────────────────────────
 get_proxy_version() {
-    local m out; m=$(detect_method)
+    local m out ver; m=$(detect_method)
     if [ "$m" = "binary" ] && [ -x "$INSTALL_DIR/teleproxy" ]; then
         out=$("$INSTALL_DIR/teleproxy" --version 2>&1 || true)
     elif [ "$m" = "docker" ]; then
         out=$(docker exec "$DOCKER_NAME" /opt/teleproxy/teleproxy --version 2>&1 || true)
     fi
     [ -z "$out" ] && return
-    echo "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
+    ver=$(echo "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1) || true
+    if [ -n "$ver" ]; then echo "$ver"; return; fi
+    ver=$(echo "$out" | grep -oE '[0-9]+' | head -1) || true
+    [ -n "$ver" ] && echo "$ver"
 }
 
 get_uptime() {
@@ -194,16 +189,16 @@ get_brief_stats() {
     local raw; raw=$(curl -sf --max-time 2 "http://127.0.0.1:${sp}/stats" 2>/dev/null || true)
     [ -z "$raw" ] && return
     local conns traffic
-    conns=$(echo "$raw" | sed -n 's/.*active_connections[= ]*\([0-9]*\).*/\1/p' | head -1)
-    [ -z "$conns" ] && conns=$(echo "$raw" | sed -n 's/.*current_connections[= ]*\([0-9]*\).*/\1/p' | head -1)
-    traffic=$(echo "$raw" | sed -n 's/.*total_bytes[= ]*\([0-9]*\).*/\1/p' | head -1)
+    conns=$(echo "$raw" | sed -n 's/.*active_connections[= ]*\([0-9]*\).*/\1/p' | head -1 | tr -dc '0-9')
+    [ -z "$conns" ] && conns=$(echo "$raw" | sed -n 's/.*current_connections[= ]*\([0-9]*\).*/\1/p' | head -1 | tr -dc '0-9')
+    traffic=$(echo "$raw" | sed -n 's/.*total_bytes[= ]*\([0-9]*\).*/\1/p' | head -1 | tr -dc '0-9')
     local result=""
-    [ -n "$conns" ] && [ "$conns" != "0" ] && result="${conns} подкл."
-    if [ -n "$traffic" ] && [ "$traffic" -gt 0 ] 2>/dev/null; then
+    [ -n "$conns" ] && [ "${conns:-0}" -ne 0 ] 2>/dev/null && result="${conns} подкл."
+    if [ -n "$traffic" ] && [ "${traffic:-0}" -gt 0 ] 2>/dev/null; then
         local hr
-        if [ "$traffic" -ge 1073741824 ] 2>/dev/null; then hr="$((traffic/1073741824))GB"
-        elif [ "$traffic" -ge 1048576 ] 2>/dev/null; then hr="$((traffic/1048576))MB"
-        elif [ "$traffic" -ge 1024 ] 2>/dev/null; then hr="$((traffic/1024))KB"
+        if [ "${traffic}" -ge 1073741824 ] 2>/dev/null; then hr="$((traffic/1073741824))GB"
+        elif [ "${traffic}" -ge 1048576 ] 2>/dev/null; then hr="$((traffic/1048576))MB"
+        elif [ "${traffic}" -ge 1024 ] 2>/dev/null; then hr="$((traffic/1024))KB"
         else hr="${traffic}B"; fi
         [ -n "$result" ] && result="${result}, "
         result="${result}${hr}"
@@ -251,7 +246,7 @@ show_menu() {
 
         local sec_info="${sec_count} шт"
         local limits_count
-        limits_count=$(grep -c '^limit ' "$CONFIG_FILE" 2>/dev/null) || true
+        limits_count=$(grep -c '^limit ' "$CONFIG_FILE" 2>/dev/null | tr -dc '0-9') || true
         limits_count="${limits_count:-0}"
         [ "$limits_count" -gt 0 ] 2>/dev/null && sec_info="${sec_info}, ${limits_count} с лимитом"
 
