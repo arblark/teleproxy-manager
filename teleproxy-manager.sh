@@ -1,7 +1,7 @@
 #!/bin/bash
 # Teleproxy Manager v1.2
 # bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/main/teleproxy-manager.sh)
-set -eo pipefail
+set +e
 
 # Гарантируем что stdin — терминал (нужно при curl|bash и bash <(...))
 if [ ! -t 0 ] && [ -e /dev/tty ]; then
@@ -123,16 +123,11 @@ reload_cfg() {
 # ── Самоустановка скрипта ──────────────────────────────────────────────
 self_install() {
     local src="${BASH_SOURCE[0]}"
-    local need_download=0
-    if [ -z "$src" ] || [ "$src" = "bash" ] || [ "$src" = "/dev/stdin" ] || [[ "$src" == /dev/fd/* ]] || [[ "$src" == /proc/self/fd/* ]]; then
-        need_download=1
-    elif [ "$(realpath "$src" 2>/dev/null)" != "$(realpath "$SELF_PATH" 2>/dev/null)" ] && [ -f "$src" ] && [ -s "$src" ]; then
+    if [ -n "$src" ] && [ -f "$src" ] && [ -s "$src" ] \
+       && [ "$(realpath "$src" 2>/dev/null)" != "$(realpath "$SELF_PATH" 2>/dev/null)" ]; then
         cp "$src" "$SELF_PATH"
         chmod +x "$SELF_PATH"
     else
-        need_download=1
-    fi
-    if [ "$need_download" = "1" ] && { [ ! -x "$SELF_PATH" ] || [ ! -s "$SELF_PATH" ]; }; then
         local tmp; tmp=$(mktemp)
         curl -fsSL "https://raw.githubusercontent.com/${SCRIPT_REPO}/main/teleproxy-manager.sh" -o "$tmp" 2>/dev/null
         if [ -s "$tmp" ]; then
