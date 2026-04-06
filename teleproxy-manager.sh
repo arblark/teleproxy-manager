@@ -32,7 +32,13 @@ die()     { err "$1"; exit 1; }
 hdr()     { printf "\n${B}──${NC} ${BOLD}%s${NC}\n" "$1"; }
 line()    { printf "${D}  ──────────────────────────────────────────────${NC}\n"; }
 pause()   { printf "\n${D}  Enter — продолжить...${NC}"; read -r; }
-menu_i()  { printf "  ${G}%2s${NC}) %-32s %s\n" "$1" "$2" "${D}$3${NC}"; }
+menu_i()  {
+    if [ -n "$3" ]; then
+        printf "  ${G}%2s${NC}) %-32b ${D}%s${NC}\n" "$1" "$2" "$3"
+    else
+        printf "  ${G}%2s${NC}) %b\n" "$1" "$2"
+    fi
+}
 
 # ── Утилиты ────────────────────────────────────────────────────────────
 detect_method() {
@@ -103,7 +109,9 @@ secret_blocks() {
 
 count_secrets() {
     [ -f "$CONFIG_FILE" ] || { echo 0; return; }
-    grep -c '^\[\[secret\]\]' "$CONFIG_FILE" 2>/dev/null || echo 0
+    local n
+    n=$(grep -c '^\[\[secret\]\]' "$CONFIG_FILE" 2>/dev/null) || true
+    echo "${n:-0}"
 }
 
 reload_cfg() {
@@ -142,12 +150,14 @@ check_script_update() {
 
 # ── Версия и uptime ────────────────────────────────────────────────────
 get_proxy_version() {
-    local m; m=$(detect_method)
+    local m out; m=$(detect_method)
     if [ "$m" = "binary" ] && [ -x "$INSTALL_DIR/teleproxy" ]; then
-        "$INSTALL_DIR/teleproxy" --version 2>&1 | grep -oP '[\d.]+' | head -1 || true
+        out=$("$INSTALL_DIR/teleproxy" --version 2>&1 || true)
     elif [ "$m" = "docker" ]; then
-        docker exec "$DOCKER_NAME" /opt/teleproxy/teleproxy --version 2>&1 | grep -oP '[\d.]+' | head -1 || true
+        out=$(docker exec "$DOCKER_NAME" /opt/teleproxy/teleproxy --version 2>&1 || true)
     fi
+    [ -z "$out" ] && return
+    echo "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
 }
 
 get_uptime() {
@@ -184,15 +194,16 @@ get_brief_stats() {
     local raw; raw=$(curl -sf --max-time 2 "http://127.0.0.1:${sp}/stats" 2>/dev/null || true)
     [ -z "$raw" ] && return
     local conns traffic
-    conns=$(echo "$raw" | grep -oP 'active_connections[= ]+\K\d+' || echo "$raw" | grep -oP 'current_connections[= ]+\K\d+' || true)
-    traffic=$(echo "$raw" | grep -oP 'total_bytes[= ]+\K\d+' || true)
+    conns=$(echo "$raw" | sed -n 's/.*active_connections[= ]*\([0-9]*\).*/\1/p' | head -1)
+    [ -z "$conns" ] && conns=$(echo "$raw" | sed -n 's/.*current_connections[= ]*\([0-9]*\).*/\1/p' | head -1)
+    traffic=$(echo "$raw" | sed -n 's/.*total_bytes[= ]*\([0-9]*\).*/\1/p' | head -1)
     local result=""
-    [ -n "$conns" ] && result="${conns} подкл."
+    [ -n "$conns" ] && [ "$conns" != "0" ] && result="${conns} подкл."
     if [ -n "$traffic" ] && [ "$traffic" -gt 0 ] 2>/dev/null; then
         local hr
-        if [ "$traffic" -ge 1073741824 ]; then hr="$(echo "scale=1; $traffic/1073741824" | bc 2>/dev/null || echo "$((traffic/1073741824))")GB"
-        elif [ "$traffic" -ge 1048576 ]; then hr="$(echo "scale=1; $traffic/1048576" | bc 2>/dev/null || echo "$((traffic/1048576))")MB"
-        elif [ "$traffic" -ge 1024 ]; then hr="$((traffic/1024))KB"
+        if [ "$traffic" -ge 1073741824 ] 2>/dev/null; then hr="$((traffic/1073741824))GB"
+        elif [ "$traffic" -ge 1048576 ] 2>/dev/null; then hr="$((traffic/1048576))MB"
+        elif [ "$traffic" -ge 1024 ] 2>/dev/null; then hr="$((traffic/1024))KB"
         else hr="${traffic}B"; fi
         [ -n "$result" ] && result="${result}, "
         result="${result}${hr}"
@@ -239,9 +250,10 @@ show_menu() {
         [ -n "$dom" ] && ftls_txt="✓ ${dom}" || ftls_txt="отключён"
 
         local sec_info="${sec_count} шт"
-        local limits_count=0
-        [ -f "$CONFIG_FILE" ] && limits_count=$(grep -c '^limit ' "$CONFIG_FILE" 2>/dev/null || echo 0)
-        [ "$limits_count" -gt 0 ] && sec_info="${sec_info}, ${limits_count} с лимитом"
+        local limits_count
+        limits_count=$(grep -c '^limit ' "$CONFIG_FILE" 2>/dev/null) || true
+        limits_count="${limits_count:-0}"
+        [ "$limits_count" -gt 0 ] 2>/dev/null && sec_info="${sec_info}, ${limits_count} с лимитом"
 
         local up_txt=""
         [ "$st" = "running" ] && { up=$(get_uptime); [ -n "$up" ] && up_txt="работает ${up}"; }
