@@ -20,15 +20,6 @@ bash <(curl -sSL https://raw.githubusercontent.com/arblark/teleproxy-manager/mai
 - Для Docker-метода: Docker будет установлен автоматически, если отсутствует
 - Для Binary-метода: systemd
 
-### Что происходит при установке
-
-1. Проверяются и устанавливаются зависимости (`curl`, `jq`, `openssl`, `xxd`)
-2. Для Docker — скачивается и запускается официальный образ `ghcr.io/teleproxy/teleproxy`
-3. Для Binary — скачивается бинарник с GitHub Releases, создаётся systemd-сервис с hardening (NoNewPrivileges, ProtectSystem, ProtectHome)
-4. Генерируется конфиг `/etc/teleproxy/config.toml` с выбранными параметрами
-5. Генерируются криптографические секреты (16 байт из `/dev/urandom`)
-6. Запускается прокси и выводятся готовые ссылки `tg://proxy` для подключения
-
 ## Возможности
 
 - **Установка в одну строку** — Docker (рекомендуется) или бинарник + systemd
